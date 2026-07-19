@@ -117,8 +117,9 @@ svg{width:20px;height:20px;fill:none;flex-shrink:0;}
 .btn-ghost:hover{background:var(--paper-dim);}
 .btn-danger{background:var(--brick);color:#fff;}
 .btn-block{width:100%;margin-top:8px;}
-.btn-icon{padding:7px 9px;border-radius:6px;background:var(--paper-dim);border:1px solid var(--line);}
-.btn-icon svg{width:15px;height:15px;stroke:var(--ink-soft);}
+.btn-icon{display:inline-flex;align-items:center;justify-content:center;padding:7px 9px;border-radius:6px;background:var(--paper-dim);border:1px solid var(--line);color:var(--ink-soft);}
+.btn-icon svg{width:15px;height:15px;stroke:currentColor;}
+.btn-icon:hover{background:var(--paper);border-color:var(--forest-lighter);color:var(--forest);}
 
 .view-area{padding:24px 28px 90px;flex:1;}
 .view{display:none;}
