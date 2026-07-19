@@ -1,29 +1,18 @@
 /* =========================================================
-   DMart Manager — in-memory store console
-   All data lives in JS memory for this session (no backend).
+   DMart Manager — now with Supabase cloud storage!
+   Products are stored online; everything else is in-memory.
 ========================================================= */
 
-/* ---------------- SEED DATA ---------------- */
-let products = [
-  { id:1, name:"Basmati Rice 5kg", category:"Grocery", sku:"GR-1001", stock:42, reorder:15, price:495 },
-  { id:2, name:"Toor Dal 1kg", category:"Grocery", sku:"GR-1002", stock:8, reorder:12, price:145 },
-  { id:3, name:"Sunflower Oil 1L", category:"Grocery", sku:"GR-1003", stock:26, reorder:10, price:139 },
-  { id:4, name:"Full Cream Milk 1L", category:"Dairy", sku:"DA-2001", stock:60, reorder:20, price:66 },
-  { id:5, name:"Paneer 200g", category:"Dairy", sku:"DA-2002", stock:5, reorder:10, price:89 },
-  { id:6, name:"Curd 400g", category:"Dairy", sku:"DA-2003", stock:34, reorder:15, price:45 },
-  { id:7, name:"Tomatoes 1kg", category:"Produce", sku:"PR-3001", stock:18, reorder:10, price:38 },
-  { id:8, name:"Onions 1kg", category:"Produce", sku:"PR-3002", stock:50, reorder:20, price:32 },
-  { id:9, name:"Bananas (dozen)", category:"Produce", sku:"PR-3003", stock:6, reorder:10, price:59 },
-  { id:10, name:"Multigrain Bread", category:"Bakery", sku:"BK-4001", stock:22, reorder:10, price:52 },
-  { id:11, name:"Butter Croissant", category:"Bakery", sku:"BK-4002", stock:3, reorder:8, price:35 },
-  { id:12, name:"Dish Wash Liquid", category:"Household", sku:"HH-5001", stock:29, reorder:10, price:99 },
-  { id:13, name:"Laundry Detergent 1kg", category:"Household", sku:"HH-5002", stock:14, reorder:10, price:210 },
-  { id:14, name:"Cola 750ml", category:"Beverages", sku:"BV-6001", stock:48, reorder:15, price:45 },
-  { id:15, name:"Orange Juice 1L", category:"Beverages", sku:"BV-6002", stock:9, reorder:12, price:110 },
-  { id:16, name:"Potato Chips 90g", category:"Snacks", sku:"SN-7001", stock:55, reorder:20, price:30 },
-  { id:17, name:"Choco Cookies", category:"Snacks", sku:"SN-7002", stock:4, reorder:15, price:49 },
-];
+/* ---------------- SUPABASE CONNECTION ---------------- */
+const SUPABASE_URL = 'https://vgtjojeithkvzqykyecp.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_lGfxBNEF2m6d2GZ1DUPEew_t0JiYXYo';
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+/* ---------------- SEED DATA (only for fallback) ---------------- */
+// We'll start with an empty array – data will be loaded from Supabase.
+let products = [];
+
+/* ---------------- STAFF, CUSTOMERS, TRANSACTIONS (unchanged) ---------------- */
 let staff = [
   { id:1, name:"Ananya Rao", role:"Store Manager", status:"on", shift:"9:00 AM – 6:00 PM" },
   { id:2, name:"Vikram Shah", role:"Cashier", status:"on", shift:"9:00 AM – 2:00 PM" },
@@ -38,24 +27,17 @@ let customers = [
   { id:3, name:"Arjun Desai", phone:"90210 98765", visits:22, spend:15960 },
 ];
 
-let transactions = []; // {id, time, customerId, items, total, cashier}
+let transactions = [];
 let txCounter = 1000;
 
 /* ---------------- STATE ---------------- */
-let cart = []; // {productId, qty}
+let cart = [];
 let currentView = "dashboard";
 let posCategory = "";
-let editingId = null; // used by modals
+let editingId = null;
 let editingType = null;
 
 const CATEGORIES = ["Grocery","Dairy","Produce","Bakery","Household","Beverages","Snacks"];
-
-/* Inline SVG icons (no emoji / external font dependency) */
-const ICONS = {
-  edit: '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 20h4l10.5-10.5a2 2 0 0 0 0-2.8l-1.2-1.2a2 2 0 0 0-2.8 0L4 16v4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
-  trash: '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13a1 1 0 0 0 1 .9h8a1 1 0 0 0 1-.9l1-13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  toggle: '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 8h13M17 8l-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-};
 
 /* ---------------- HELPERS ---------------- */
 const $ = (sel, ctx=document) => ctx.querySelector(sel);
@@ -85,8 +67,7 @@ const viewMeta = {
 
 function switchView(view){
   currentView = view;
-  $$(".view").forEach(v => v.classList.remove("active"));
-  $("#view-" + view).classList.add("active");
+  $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + view));
   $$(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.view === view));
   $$(".bn-item").forEach(b => b.classList.toggle("active", b.dataset.view === view));
   $("#viewTitle").textContent = viewMeta[view][0];
@@ -120,6 +101,113 @@ function closeSidebar(){
   $(".sidebar").classList.remove("open");
   const overlay = $(".sidebar-overlay");
   if(overlay) overlay.classList.remove("show");
+}
+
+/* =========================================================
+   SUPABASE PRODUCT CRUD FUNCTIONS
+========================================================= */
+
+// Load products from Supabase and map to local structure
+async function loadProducts() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('products')
+      .select('*')
+      .order('name');
+    if (error) throw error;
+
+    // Map Supabase fields to local fields
+    products = data.map(p => ({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      sku: p.product_code,
+      stock: p.stock_quantity,
+      reorder: p.reorder_level,
+      price: p.price
+    }));
+
+    // Re-render whatever view is active
+    renderCurrentView();
+    toast('✅ Products loaded from cloud');
+    return products;
+  } catch (error) {
+    console.error('❌ Error loading products:', error);
+    products = [];
+    renderCurrentView();
+    toast('⚠️ Could not load products from server');
+  }
+}
+
+// Add a new product to Supabase
+async function addProductToSupabase(product) {
+  const supabaseProduct = {
+    product_code: product.sku,
+    name: product.name,
+    category: product.category,
+    price: product.price,
+    cost: product.price * 0.8,
+    stock_quantity: product.stock,
+    unit: 'pcs',
+    supplier: '',
+    reorder_level: product.reorder,
+    description: ''
+  };
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('products')
+      .insert([supabaseProduct])
+      .select();
+    if (error) throw error;
+    await loadProducts();
+    toast('✅ Product added to cloud');
+    return data;
+  } catch (error) {
+    console.error('❌ Error adding product:', error);
+    toast('❌ Failed to add product');
+  }
+}
+
+// Update an existing product in Supabase
+async function updateProductInSupabase(id, updates) {
+  const supabaseUpdates = {
+    name: updates.name,
+    category: updates.category,
+    product_code: updates.sku,
+    price: updates.price,
+    stock_quantity: updates.stock,
+    reorder_level: updates.reorder,
+  };
+
+  try {
+    const { error } = await supabaseClient
+      .from('products')
+      .update(supabaseUpdates)
+      .eq('id', id);
+    if (error) throw error;
+    await loadProducts();
+    toast('✅ Product updated in cloud');
+  } catch (error) {
+    console.error('❌ Error updating product:', error);
+    toast('❌ Failed to update product');
+  }
+}
+
+// Delete a product from Supabase
+async function deleteProductFromSupabase(id) {
+  try {
+    const { error } = await supabaseClient
+      .from('products')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    await loadProducts();
+    toast('🗑️ Product removed from cloud');
+  } catch (error) {
+    console.error('❌ Error deleting product:', error);
+    toast('❌ Failed to delete product');
+  }
 }
 
 /* =========================================================
@@ -188,7 +276,6 @@ function renderSalesChart(){
    BILLING / POS
 ========================================================= */
 function renderPOS(){
-  // category chips
   $("#posCategoryChips").innerHTML = ["All", ...CATEGORIES].map(c => {
     const val = c === "All" ? "" : c;
     return `<button class="chip-btn ${posCategory===val?'active':''}" data-cat="${val}">${c}</button>`;
@@ -214,7 +301,6 @@ function renderPOS(){
     b.addEventListener("click", ()=> addToCart(Number(b.dataset.id)));
   });
 
-  // customer select
   const custSel = $("#cartCustomer");
   const currentVal = custSel.value;
   custSel.innerHTML = `<option value="">Walk-in Customer</option>` +
@@ -282,7 +368,7 @@ function renderCart(){
   $("#cartTotal").textContent = fmt(subtotal+tax);
 }
 
-function checkout(){
+async function checkout(){
   if(!cart.length){ toast("Add items before checking out"); return; }
   const subtotal = cart.reduce((s,c)=>{
     const p = products.find(x=>x.id===c.productId);
@@ -293,11 +379,20 @@ function checkout(){
   const custId = $("#cartCustomer").value ? Number($("#cartCustomer").value) : null;
   const cashier = staff.find(s=>s.status==="on")?.name || "Store Staff";
 
-  const items = cart.map(c=>{
+  const items = [];
+  for (const c of cart) {
     const p = products.find(x=>x.id===c.productId);
     p.stock -= c.qty;
-    return {productId:p.id, name:p.name, qty:c.qty, price:p.price};
-  });
+    await updateProductInSupabase(p.id, {
+      name: p.name,
+      category: p.category,
+      sku: p.sku,
+      price: p.price,
+      stock: p.stock,
+      reorder: p.reorder
+    });
+    items.push({productId:p.id, name:p.name, qty:c.qty, price:p.price});
+  }
 
   const tx = { id: ++txCounter, time: new Date(), customerId:custId, items, total, cashier };
   transactions.push(tx);
@@ -355,8 +450,8 @@ function renderInventory(){
       <td class="mono">${fmt(p.price)}</td>
       <td>
         <div class="row-actions">
-          <button class="btn-icon" data-act="edit" data-id="${p.id}" title="Edit">${ICONS.edit}</button>
-          <button class="btn-icon" data-act="del" data-id="${p.id}" title="Delete">${ICONS.trash}</button>
+          <button class="btn-icon" data-act="edit" data-id="${p.id}" title="Edit">✎</button>
+          <button class="btn-icon" data-act="del" data-id="${p.id}" title="Delete">🗑</button>
         </div>
       </td>
     </tr>`;
@@ -371,12 +466,10 @@ function renderInventory(){
   });
 }
 
-function deleteProduct(id){
+async function deleteProduct(id){
   const p = products.find(x=>x.id===id);
   if(!confirm(`Remove "${p.name}" from inventory?`)) return;
-  products = products.filter(x=>x.id!==id);
-  renderInventory();
-  toast("Product removed");
+  await deleteProductFromSupabase(id);
 }
 
 function openProductModal(id=null){
@@ -403,7 +496,7 @@ function openProductModal(id=null){
   openModal();
 }
 
-function saveProduct(){
+async function saveProduct(){
   const name = $("#f-name").value.trim();
   const category = $("#f-cat").value;
   const sku = $("#f-sku").value.trim();
@@ -413,12 +506,9 @@ function saveProduct(){
   if(!name || !sku){ toast("Please fill in product name and SKU"); return; }
 
   if(editingId){
-    const p = products.find(x=>x.id===editingId);
-    Object.assign(p, {name, category, sku, stock, reorder, price});
-    toast("Product updated");
+    await updateProductInSupabase(editingId, { name, category, sku, stock, reorder, price });
   } else {
-    products.push({id: nextId(products), name, category, sku, stock, reorder, price});
-    toast("Product added");
+    await addProductToSupabase({ name, category, sku, stock, reorder, price });
   }
   closeModal();
   renderInventory();
@@ -442,9 +532,9 @@ function renderStaff(){
         <span class="status-dot ${s.status==='on'?'on':'off'}"><span class="dot"></span>${s.status==='on'?'On duty':'Off duty'}</span>
       </div>
       <div class="row-actions" style="margin-top:12px;">
-        <button class="btn-icon" data-act="toggle" data-id="${s.id}" title="Toggle status">${ICONS.toggle}</button>
-        <button class="btn-icon" data-act="edit" data-id="${s.id}" title="Edit">${ICONS.edit}</button>
-        <button class="btn-icon" data-act="del" data-id="${s.id}" title="Remove">${ICONS.trash}</button>
+        <button class="btn-icon" data-act="toggle" data-id="${s.id}" title="Toggle status">⇄</button>
+        <button class="btn-icon" data-act="edit" data-id="${s.id}" title="Edit">✎</button>
+        <button class="btn-icon" data-act="del" data-id="${s.id}" title="Remove">🗑</button>
       </div>
     </div>`).join("") || `<p class="empty-note">No staff found.</p>`;
 
@@ -506,8 +596,8 @@ function renderCustomers(){
       <td class="mono">${fmt(c.spend)}</td>
       <td>
         <div class="row-actions">
-          <button class="btn-icon" data-act="edit" data-id="${c.id}" title="Edit">${ICONS.edit}</button>
-          <button class="btn-icon" data-act="del" data-id="${c.id}" title="Delete">${ICONS.trash}</button>
+          <button class="btn-icon" data-act="edit" data-id="${c.id}" title="Edit">✎</button>
+          <button class="btn-icon" data-act="del" data-id="${c.id}" title="Delete">🗑</button>
         </div>
       </td>
     </tr>`).join("") || `<tr><td colspan="5" class="empty-note">No customers found.</td></tr>`;
@@ -595,7 +685,11 @@ function updateClock(){
   $("#shiftClock").textContent = now.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
 }
 
-function init(){
+async function init(){
+  // Load products from Supabase first
+  await loadProducts();
+
+  // Set up event listeners
   $$(".nav-item").forEach(b => b.addEventListener("click", ()=>switchView(b.dataset.view)));
   $$(".bn-item").forEach(b => b.addEventListener("click", ()=>switchView(b.dataset.view)));
   $("#hamburger").addEventListener("click", openSidebar);
