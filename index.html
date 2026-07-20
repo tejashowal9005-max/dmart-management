@@ -166,6 +166,31 @@ select{border:1px solid var(--line);background:var(--white);border-radius:8px;pa
 .receipt-line{display:flex;justify-content:space-between;padding:4px 0;}
 .receipt-divider{border-top:1px dashed var(--line);margin:10px 0;}
 .receipt-total{font-weight:700;font-size:14px;}
+.receipt-paytag{display:inline-block;margin-top:10px;padding:3px 10px;border-radius:20px;background:var(--paper-dim);color:var(--forest);font-size:11px;font-weight:700;letter-spacing:.4px;}
+
+/* Payment method chips */
+.pay-method-row{display:flex;gap:6px;}
+.pay-opt{flex:1;border:1px solid var(--line);background:var(--white);border-radius:8px;padding:9px 4px;font-size:12px;font-weight:600;color:var(--ink-soft);}
+.pay-opt.active{background:var(--forest);color:#fff;border-color:var(--forest);}
+
+/* QR modal */
+.qr-modal{max-width:340px;}
+.qr-body{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;}
+.qr-wrap{width:200px;height:200px;border:1px solid var(--line);border-radius:10px;padding:10px;background:#fff;display:flex;align-items:center;justify-content:center;}
+.qr-wrap img{width:100%;height:100%;object-fit:contain;}
+.qr-fallback{font-size:11.5px;color:var(--ink-soft);text-align:center;line-height:1.4;padding:8px;}
+.qr-amount{font-family:var(--font-display);font-size:24px;font-weight:600;color:var(--forest);margin:8px 0 2px;}
+.qr-hint{font-size:12px;color:var(--ink-soft);margin:0 0 10px;}
+.qr-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-soft);background:var(--paper-dim);padding:8px 12px;border-radius:20px;margin-bottom:14px;width:100%;justify-content:center;}
+.qr-status.confirmed{background:#E4F3E4;color:#2C7A3D;}
+
+/* Print stylesheet — only the receipt prints, formatted like a till slip */
+@media print{
+  body *{visibility:hidden;}
+  #receiptBody, #receiptBody *{visibility:visible;}
+  #receiptBody{position:absolute;top:0;left:0;width:280px;font-family:var(--font-mono);}
+  .no-print{display:none !important;}
+}
 
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--forest);color:#fff;padding:12px 20px;border-radius:8px;font-size:13.5px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;z-index:100;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -260,6 +285,14 @@ select{border:1px solid var(--line);background:var(--white);border-radius:8px;pa
               <div class="row"><span>Tax (5%)</span><strong id="cartTax">₹0.00</strong></div>
               <div class="row total"><span>Total</span><strong id="cartTotal">₹0.00</strong></div>
               <label class="field"><span>Customer (optional)</span><select id="cartCustomer"><option value="">Walk-in Customer</option></select></label>
+              <div class="field">
+                <span>Payment Method</span>
+                <div class="pay-method-row" id="payMethodRow">
+                  <button type="button" class="pay-opt active" data-pay="Cash">💵 Cash</button>
+                  <button type="button" class="pay-opt" data-pay="Card">💳 Card</button>
+                  <button type="button" class="pay-opt" data-pay="UPI">📱 UPI / Scan</button>
+                </div>
+              </div>
               <button class="btn btn-primary btn-block" id="checkoutBtn">Checkout &amp; Print Bill</button>
               <button class="btn btn-ghost btn-block" id="clearCartBtn">Clear Cart</button>
             </div>
@@ -296,7 +329,7 @@ select{border:1px solid var(--line);background:var(--white);border-radius:8px;pa
         <div class="ticket-row" id="reportTickets"></div>
         <div class="panel">
           <div class="panel-head"><h2>All Transactions</h2><button class="btn btn-ghost" id="resetDataBtn">Reset Demo Data</button></div>
-          <div class="table-wrap"><table class="ledger-table" id="txTable"><thead><tr><th>Bill #</th><th>Time</th><th>Customer</th><th>Items</th><th>Cashier</th><th>Total</th></tr></thead><tbody id="txTableBody"></tbody></table></div>
+          <div class="table-wrap"><table class="ledger-table" id="txTable"><thead><tr><th>Bill #</th><th>Time</th><th>Customer</th><th>Items</th><th>Cashier</th><th>Payment</th><th>Total</th></tr></thead><tbody id="txTableBody"></tbody></table></div>
         </div>
       </section>
     </main>
@@ -312,7 +345,28 @@ select{border:1px solid var(--line);background:var(--white);border-radius:8px;pa
 </div>
 
 <div class="modal-backdrop" id="modalBackdrop"><div class="modal" id="modal"><div class="modal-head"><h3 id="modalTitle">Add Product</h3><button class="modal-close" id="modalClose">&times;</button></div><div class="modal-body" id="modalBody"></div></div></div>
-<div class="modal-backdrop" id="receiptBackdrop"><div class="modal receipt-modal" id="receiptModal"><div class="modal-head"><h3>Bill Receipt</h3><button class="modal-close" id="receiptClose">&times;</button></div><div class="modal-body" id="receiptBody"></div></div></div>
+<div class="modal-backdrop" id="qrBackdrop"><div class="modal qr-modal" id="qrModal">
+  <div class="modal-head"><h3>Scan to Pay</h3><button class="modal-close" id="qrClose">&times;</button></div>
+  <div class="modal-body qr-body">
+    <div class="qr-wrap">
+      <img id="qrImage" alt="UPI payment QR code" width="200" height="200" onerror="this.style.display='none'; document.getElementById('qrFallback').style.display='flex';">
+      <div id="qrFallback" class="qr-fallback" style="display:none;">QR code needs an internet connection to load. You can still confirm the payment manually below.</div>
+    </div>
+    <p class="qr-amount" id="qrAmount">₹0.00</p>
+    <p class="qr-hint">Ask the customer to scan this with any UPI app (GPay, PhonePe, Paytm…)</p>
+    <div class="qr-status" id="qrStatus"><span class="boot-spin" style="width:14px;height:14px;"></span><span>Waiting for payment…</span></div>
+    <button class="btn btn-primary btn-block" id="qrConfirmBtn">Payment Received — Confirm</button>
+    <button class="btn btn-ghost btn-block" id="qrCancelBtn">Cancel</button>
+  </div>
+</div></div>
+
+<div class="modal-backdrop" id="receiptBackdrop"><div class="modal receipt-modal" id="receiptModal">
+  <div class="modal-head no-print"><h3>Bill Receipt</h3><button class="modal-close" id="receiptClose">&times;</button></div>
+  <div class="modal-body" id="receiptBody"></div>
+  <div class="modal-body no-print" style="padding-top:0;">
+    <button class="btn btn-primary btn-block" id="printReceiptBtn">🖨️ Print Receipt</button>
+  </div>
+</div></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -441,6 +495,8 @@ let editingId = null;
 let invPage = 1, custPage = 1;
 let storageAvailable = false;
 let saveTimer = null;
+let paymentMethod = "Cash";
+let pendingCheckout = null;
 
 /* ---------------- HELPERS ---------------- */
 const $ = (sel, ctx=document) => ctx.querySelector(sel);
@@ -690,12 +746,25 @@ function renderCart(){
   $("#cartTax").textContent = fmt(tax);
   $("#cartTotal").textContent = fmt(subtotal+tax);
 }
-async function checkout(){
+function checkout(){
   if(!cart.length){ toast("Add items before checking out"); return; }
   const subtotal = cart.reduce((s,c)=>{ const p = state.products.find(x=>x.id===c.productId); return s + p.price*c.qty; },0);
   const tax = subtotal*0.05;
   const total = Math.round((subtotal+tax)*100)/100;
   const custId = $("#cartCustomer").value ? Number($("#cartCustomer").value) : null;
+
+  pendingCheckout = { total, custId };
+
+  if(paymentMethod === "UPI"){
+    openQrPay(total);
+  } else {
+    finalizeCheckout(paymentMethod);
+  }
+}
+
+async function finalizeCheckout(method){
+  if(!pendingCheckout) return;
+  const { total, custId } = pendingCheckout;
   const cashier = (state.staff.find(s=>s.status==="on")||{}).name || "Store Staff";
 
   const items = cart.map(c=>{
@@ -704,7 +773,7 @@ async function checkout(){
     return {productId:p.id, name:p.name, qty:c.qty, price:p.price};
   });
 
-  const tx = { id: ++state.txCounter, time: new Date().toISOString(), customerId:custId, items, total, cashier };
+  const tx = { id: ++state.txCounter, time: new Date().toISOString(), customerId:custId, items, total, cashier, paymentMethod: method };
   state.transactions.push(tx);
 
   if(custId){
@@ -714,12 +783,27 @@ async function checkout(){
 
   showReceipt(tx);
   cart = [];
+  pendingCheckout = null;
   renderPOS();
   toast("Bill generated successfully");
   await persist();
 }
+
+function openQrPay(total){
+  const upiString = `upi://pay?pa=dmartstore@okaxis&pn=DMart%20Store&am=${total.toFixed(2)}&cu=INR&tn=BillPayment`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiString)}`;
+  $("#qrImage").style.display = "block";
+  $("#qrFallback").style.display = "none";
+  $("#qrImage").src = qrUrl;
+  $("#qrAmount").textContent = fmt(total);
+  $("#qrStatus").className = "qr-status";
+  $("#qrStatus").innerHTML = `<span class="boot-spin" style="width:14px;height:14px;"></span><span>Waiting for payment…</span>`;
+  $("#qrBackdrop").classList.add("show");
+}
+
 function showReceipt(tx){
   const cust = tx.customerId ? state.customers.find(c=>c.id===tx.customerId) : null;
+  const payLabel = tx.paymentMethod === "UPI" ? "UPI (Scan &amp; Pay)" : tx.paymentMethod || "Cash";
   $("#receiptBody").innerHTML = `
     <div class="receipt-line"><span>Bill #</span><span>${tx.id}</span></div>
     <div class="receipt-line"><span>Time</span><span>${new Date(tx.time).toLocaleString()}</span></div>
@@ -729,6 +813,7 @@ function showReceipt(tx){
     ${tx.items.map(i=>`<div class="receipt-line"><span>${i.name} × ${i.qty}</span><span>${fmt(i.price*i.qty)}</span></div>`).join("")}
     <div class="receipt-divider"></div>
     <div class="receipt-line receipt-total"><span>Total</span><span>${fmt(tx.total)}</span></div>
+    <div style="text-align:center;"><span class="receipt-paytag">Paid via ${payLabel}</span></div>
   `;
   $("#receiptBackdrop").classList.add("show");
 }
@@ -971,8 +1056,8 @@ function renderReports(){
   const sorted = [...state.transactions].sort((a,b)=>new Date(b.time)-new Date(a.time));
   $("#txTableBody").innerHTML = sorted.map(t=>{
     const cust = t.customerId ? state.customers.find(c=>c.id===t.customerId) : null;
-    return `<tr><td class="mono">#${t.id}</td><td>${new Date(t.time).toLocaleString()}</td><td>${cust?cust.name:"Walk-in"}</td><td>${t.items.reduce((s,i)=>s+i.qty,0)} units</td><td>${t.cashier}</td><td class="mono">${fmt(t.total)}</td></tr>`;
-  }).join("") || `<tr><td colspan="6" class="empty-note">No transactions recorded yet.</td></tr>`;
+    return `<tr><td class="mono">#${t.id}</td><td>${new Date(t.time).toLocaleString()}</td><td>${cust?cust.name:"Walk-in"}</td><td>${t.items.reduce((s,i)=>s+i.qty,0)} units</td><td>${t.cashier}</td><td>${t.paymentMethod||"Cash"}</td><td class="mono">${fmt(t.total)}</td></tr>`;
+  }).join("") || `<tr><td colspan="7" class="empty-note">No transactions recorded yet.</td></tr>`;
 }
 
 /* =========================================================
@@ -1007,6 +1092,31 @@ async function init(){
   $("#posSearch").addEventListener("input", renderPOS);
   $("#checkoutBtn").addEventListener("click", checkout);
   $("#clearCartBtn").addEventListener("click", ()=>{ cart=[]; renderCart(); });
+
+  $$("#payMethodRow .pay-opt").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      paymentMethod = b.dataset.pay;
+      $$("#payMethodRow .pay-opt").forEach(x=>x.classList.toggle("active", x===b));
+    });
+  });
+
+  $("#qrConfirmBtn").addEventListener("click", async ()=>{
+    $("#qrStatus").className = "qr-status confirmed";
+    $("#qrStatus").innerHTML = `<span>✓</span><span>Payment confirmed</span>`;
+    await new Promise(r=>setTimeout(r, 400));
+    $("#qrBackdrop").classList.remove("show");
+    await finalizeCheckout("UPI");
+  });
+  $("#qrCancelBtn").addEventListener("click", ()=>{
+    $("#qrBackdrop").classList.remove("show");
+    pendingCheckout = null;
+  });
+  $("#qrClose").addEventListener("click", ()=>{
+    $("#qrBackdrop").classList.remove("show");
+    pendingCheckout = null;
+  });
+
+  $("#printReceiptBtn").addEventListener("click", ()=> window.print());
   $("#resetDataBtn").addEventListener("click", async ()=>{
     if(!confirm("Reset all data back to the original 100-product demo set? This clears every edit you've made.")) return;
     state = generateSeedData();
